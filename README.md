@@ -20,7 +20,7 @@ trace or it isn't. No grader, no threshold, no drift.
 
 ## Install (clone and run)
 
-No PyPI, no install step for the tool itself — clone it and run it:
+clone it and run it:
 
 ```bash
 git clone https://github.com/m4vic/asrt-bench
