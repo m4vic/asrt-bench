@@ -1,0 +1,8 @@
+{
+  "name": "local-ollama",
+  "kind": "model",
+  "provider": "ollama",
+  "model": "qwen2.5:7b-instruct",
+  "api_base": "http://localhost:11434",
+  "attacker_knowledge": "schema"
+}
