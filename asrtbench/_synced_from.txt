@@ -1,4 +1,0 @@
-asrt-bench's engine (core/, harness/, adjudication/verifier, evidence/) is a
-copy of the ASRT harness, synced from ASRT commit ebb4be7.
-Do not edit these files here -- edit them in ASRT and re-sync via
-asrt/tools/sync_asrt_bench.py. See ADR-0012.
