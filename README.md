@@ -2,8 +2,13 @@
 
 **Fire a frozen attack pack at your AI agent, verify what lands, and diff safety across versions.**
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![License: MIT](https://img.shields.io/github/license/m4vic/asrt-bench?color=22d3ee)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/m4vic/asrt-bench?style=flat&color=22d3ee)](https://github.com/m4vic/asrt-bench/stargazers)
+[![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](requirements.txt)
+
+<p align="center">
+  <img src="docs/screenshot.png" alt="asrt-bench console" width="820">
+</p>
 
 asrt-bench answers one question, and answers it without a human or an LLM judge:
 
