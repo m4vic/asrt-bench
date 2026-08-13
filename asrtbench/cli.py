@@ -14,9 +14,23 @@ CLI decides nothing about a verdict.
 from __future__ import annotations
 
 import shlex
+import sys
 
-from rich.console import Console
+# The console uses box-drawing and block glyphs. On Windows a piped or legacy
+# console defaults to cp1252 and cannot encode them -- force UTF-8 so the UI
+# renders in a real terminal and degrades to plain UTF-8 text when piped,
+# instead of crashing.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+from rich import box
+from rich.align import Align
+from rich.console import Console, Group
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
@@ -26,17 +40,22 @@ from asrtbench.diff import compare, IncomparableRuns
 
 console = Console()
 
+# One brand colour and a small, consistent palette used everywhere:
+#   cyan    structure / brand           red     an attack LANDED (bad)
+#   green   defended (good)             yellow  unclear (neither)
+#   magenta the active run
+BRAND = "#22d3ee"   # cyan
+
 _LOGO = r"""
- ___  ___ ___ _____   ___  ___ _ _  ___ _  _
-/   \/ __| _ \_   _| | _ )/ __| \ | / __| || |
-| - |\__ \   / | |   | _ \ _| | .` | (__| __ |
-|_|_|/___/_|_\ |_|   |___/___|_|\_|\___|_||_|
+ ▄▀█ █▀ █▀█ ▀█▀   █▄▄ █▀▀ █▄░█ █▀▀ █░█
+ █▀█ ▄█ █▀▄ ░█░   █▄█ ██▄ █░▀█ █▄▄ █▀█
 """
 
-VERDICT_STYLE = {
-    "success": ("LANDED", "bold red"),
-    "failure": ("defended", "green"),
-    "unclear": ("unclear", "yellow"),
+# label, icon, style — the single source of truth for how a verdict looks.
+VERDICT = {
+    "success": ("LANDED",   "✗", "bold red"),
+    "failure": ("defended", "✓", "green"),
+    "unclear": ("unclear",  "•", "yellow"),
 }
 
 
@@ -52,35 +71,48 @@ def cmd_target(session: Session, args: dict) -> None:
     ref = args.get("_pos")
     if ref == "list":
         names = Target.list_available()
-        console.print("[dim]bundled targets:[/dim] " + ", ".join(f"[cyan]{n}[/cyan]" for n in names))
-        console.print("[dim]or pass a path to your own config file[/dim]")
+        chips = "  ".join(f"[{BRAND}]{n}[/{BRAND}]" for n in names)
+        console.print(Panel(
+            Group(Text("bundled targets", style="dim"), Text(""), Text.from_markup("  " + chips),
+                  Text(""), Text("…or pass a path to your own JSON config", style="dim italic")),
+            title="targets", title_align="left", border_style=BRAND, box=box.ROUNDED, padding=(0, 2)))
         return
     if ref:
         try:
             session.target = Target.resolve(ref)
         except (FileNotFoundError, ValueError) as exc:
-            console.print(f"[red]{exc}[/red]")
+            console.print(f"  [red]✗ {exc}[/red]")
             return
     _render_target(session.target)
 
 
 def _render_target(target: Target) -> None:
     d = target.describe()
-    t = Table.grid(padding=(0, 2))
-    t.add_column(style="dim", justify="right", width=13)
+    t = Table.grid(padding=(0, 3))
+    t.add_column(style="dim", justify="right", width=9)
     t.add_column()
-    t.add_row("target", f"[cyan]{d['name']}[/cyan]")
+    t.add_row("target", f"[bold {BRAND}]{d['name']}[/bold {BRAND}]")
     if d["kind"] == "model":
-        t.add_row("model", f"{d['model']}  [dim]({d['provider']} @ {d['endpoint']})[/dim]")
+        t.add_row("model", f"{d['model']}")
+        t.add_row("via", f"[dim]{d['provider']} · {d['endpoint']}[/dim]")
     else:
-        t.add_row("kind", "fixture  [dim](deterministic, no model)[/dim]")
-    t.add_row("tools", ", ".join(d["tools"]))
-    t.add_row("blast ceiling", str(d["blast_ceiling"]))
-    console.print(Panel(t, border_style="cyan", expand=False))
+        t.add_row("kind", "fixture  [dim]· deterministic, no model[/dim]")
+    t.add_row("tools", "[dim]" + ", ".join(d["tools"]) + "[/dim]")
+    t.add_row("max blast", _blast_bar(d["blast_ceiling"]))
+    console.print(Panel(t, title="◈ target", title_align="left",
+                        border_style=BRAND, box=box.ROUNDED, padding=(1, 2), expand=False))
     if d["kind"] == "model":
         missing = target.missing_credential()
         if missing:
-            console.print(f"[yellow]needs {missing} in the environment before /run[/yellow]")
+            console.print(f"  [yellow]⚠ needs {missing} in the environment before /run[/yellow]")
+
+
+def _blast_bar(ceiling: int) -> str:
+    """A tiny 1-10 severity meter, so the target's reach is visible at a glance."""
+    filled = "█" * ceiling
+    empty = "░" * (10 - ceiling)
+    colour = "red" if ceiling >= 8 else ("yellow" if ceiling >= 4 else "green")
+    return f"[{colour}]{filled}[/{colour}][dim]{empty}[/dim]  [dim]{ceiling}/10[/dim]"
 
 
 def cmd_run(session: Session, args: dict) -> None:
@@ -99,41 +131,61 @@ def cmd_run(session: Session, args: dict) -> None:
 
     if store.exists(name):
         old = store.meta(name)
-        console.print(f"[yellow]overwriting version '{name}'[/yellow] "
-                      f"[dim](was {old['run_id']}, target {old['target']})[/dim]")
+        console.print(f"  [yellow]⚠ overwriting version '{name}'[/yellow] "
+                      f"[dim]· was {old['run_id']}, target {old['target']}[/dim]")
 
-    console.print(Panel(f"firing pack at [cyan]{session.target.name}[/cyan] "
-                        f"[dim](tools inert -- no real side effects)[/dim]",
-                        border_style="magenta", expand=False))
-
-    rows: list[Text] = []
+    console.print()
+    console.print(Rule(f"[magenta]▶ firing pack at[/magenta] [bold {BRAND}]{session.target.name}[/bold {BRAND}]"
+                       f"   [dim]tools inert — no real side effects[/dim]",
+                       style="magenta", align="left"))
 
     def emit(stage: str, p: dict) -> None:
         if stage == "case_verdict":
-            label, style = VERDICT_STYLE.get(p["verdict"], (p["verdict"], "white"))
-            br = (p.get("blast_radius") or {}).get("tool") or "-"
-            line = Text()
-            line.append(f"  {label:<9}", style=style)
-            line.append(f"{p['attack_id']:<42}", style="dim")
-            line.append(f"reached {br}", style="dim")
+            label, icon, style = VERDICT.get(p["verdict"], (p["verdict"], "?", "white"))
+            br = (p.get("blast_radius") or {}).get("tool") or "—"
+            line = Text("  ")
+            line.append(f"{icon} ", style=style)
+            line.append(f"{label:<9}", style=style)
+            line.append(f"{p['attack_id']:<40}", style="white")
+            line.append(f"→ {br}", style="dim")
             console.print(line)
 
     try:
         result = runner.run_pack(session.target, pack, emit=emit)
     except Exception as exc:
-        console.print(f"[red]run failed: {type(exc).__name__}: {exc}[/red]")
+        console.print(f"  [red]✗ run failed: {type(exc).__name__}: {exc}[/red]")
         return
 
     path = store.save(result, name)
     c = result.counts()
-    summary = Table.grid(padding=(0, 2))
+    total = c["total"] or 1
+    bar = _stack_bar(c["success"], c["failure"], c["unclear"], total)
+
+    summary = Table.grid(padding=(0, 3))
     summary.add_column(style="dim", justify="right", width=9)
     summary.add_column()
-    summary.add_row("landed", f"[bold red]{c['success']}[/bold red]")
+    summary.add_row("", bar)
+    summary.add_row("landed", f"[bold red]{c['success']}[/bold red]  [dim]attacks got through[/dim]")
     summary.add_row("defended", f"[green]{c['failure']}[/green]")
-    summary.add_row("unclear", f"[yellow]{c['unclear']}[/yellow]  [dim](never pass or fail)[/dim]")
-    summary.add_row("saved", f"version [cyan]{name}[/cyan]  [dim]{path}[/dim]")
-    console.print(Panel(summary, title="run complete", border_style="cyan", expand=False))
+    summary.add_row("unclear", f"[yellow]{c['unclear']}[/yellow]  [dim]· never pass or fail[/dim]")
+    summary.add_row("", "")
+    summary.add_row("saved as", f"[bold {BRAND}]{name}[/bold {BRAND}]  [dim]· {path}[/dim]")
+    console.print(Panel(summary, title="✓ run complete", title_align="left",
+                        border_style="green" if not c["success"] else "red",
+                        box=box.ROUNDED, padding=(1, 2), expand=False))
+
+
+def _stack_bar(landed: int, defended: int, unclear: int, total: int, width: int = 30) -> Text:
+    """A single proportional bar: red landed | green defended | yellow unclear."""
+    def seg(n, ch, style):
+        w = round(width * n / total)
+        return Text(ch * w, style=style) if w else Text("")
+    bar = Text()
+    bar.append_text(seg(landed, "█", "red"))
+    bar.append_text(seg(defended, "█", "green"))
+    bar.append_text(seg(unclear, "█", "yellow"))
+    bar.append(f"  {landed}/{total} landed", style="dim")
+    return bar
 
 
 def cmd_diff(session: Session, args: dict) -> None:
@@ -144,77 +196,81 @@ def cmd_diff(session: Session, args: dict) -> None:
 
     if not a or not b:
         if len(versions) >= 2:
-            console.print("[dim]saved versions (newest first):[/dim]")
-            for v in versions:
-                console.print(f"  [cyan]{v['version']}[/cyan]  [dim]{v['target']}  "
-                              f"landed={v['counts']['success']}[/dim]")
-            console.print("\n[dim]compare two:[/dim]  /diff <baseline> <candidate>")
-            # Offer the obvious adjacent pair.
             newer, older = versions[0]["version"], versions[1]["version"]
-            console.print(f"[dim]e.g.[/dim]  /diff {older} {newer}")
+            body = [Text("saved versions — pick two to compare", style="dim"), Text("")]
+            for v in versions:
+                body.append(Text.from_markup(
+                    f"  [bold {BRAND}]{v['version']:<12}[/bold {BRAND}] "
+                    f"[dim]{v['target']:<20} {v['counts']['success']} landed[/dim]"))
+            body += [Text(""), Text.from_markup(f"  [dim]try:[/dim]  /diff {older} {newer}")]
+            console.print(Panel(Group(*body), title="◈ diff", title_align="left",
+                                border_style=BRAND, box=box.ROUNDED, padding=(1, 2)))
         else:
-            console.print("[yellow]need at least two saved versions to diff. "
-                          "Run /run name=v1 then /run name=v2 first.[/yellow]")
+            console.print("  [yellow]⚠ need two saved versions. Run /run name=v1, then /run name=v2.[/yellow]")
         return
 
     try:
         baseline = store.load(a)
         candidate = store.load(b)
     except FileNotFoundError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"  [red]✗ {exc}[/red]")
         return
 
     try:
         report = compare(baseline, candidate, baseline_name=a, candidate_name=b)
     except IncomparableRuns as exc:
-        console.print(Panel(f"[red]cannot compare:[/red] {exc}", border_style="red", expand=False))
+        console.print(Panel(f"[red]✗ cannot compare[/red]\n\n{exc}", title="diff refused",
+                            title_align="left", border_style="red", box=box.ROUNDED, padding=(1, 2)))
         return
 
     _render_diff(report)
 
 
 def _render_diff(report) -> None:
-    head = {"regressed": ("REGRESSED", "bold red"),
-            "improved": ("IMPROVED", "green"),
-            "unchanged": ("UNCHANGED", "cyan")}[report.verdict()]
-    console.print(Panel(
-        f"[{head[1]}]{head[0]}[/{head[1]}]   [dim]{report.baseline} -> {report.candidate}[/dim]",
-        border_style=head[1].split()[-1], expand=False))
+    head = {"regressed": ("REGRESSED", "bold white on red", "red"),
+            "improved":  ("IMPROVED", "bold white on green", "green"),
+            "unchanged": ("UNCHANGED", f"bold {BRAND}", BRAND)}[report.verdict()]
+
+    body = [Text.from_markup(
+        f" [{head[1]}] {head[0]} [/{head[1]}]   "
+        f"[dim]{report.baseline}  →  {report.candidate}[/dim]"), Text("")]
 
     if report.newly_broken:
-        console.print("[bold red]newly broken[/bold red]  [dim](safe before, exploitable now)[/dim]")
+        body.append(Text.from_markup("[bold red]▼ newly broken[/bold red]  [dim]safe before, exploitable now[/dim]"))
         for ch in report.newly_broken:
-            console.print(f"  [red]x[/red] {ch.attack_id}  [dim]{ch.baseline} -> {ch.candidate}[/dim]")
+            body.append(Text.from_markup(f"    [red]✗[/red] {ch.attack_id}  [dim]{ch.baseline} → {ch.candidate}[/dim]"))
+        body.append(Text(""))
     if report.newly_fixed:
-        console.print("[green]newly fixed[/green]  [dim](exploitable before, safe now)[/dim]")
+        body.append(Text.from_markup("[bold green]▲ newly fixed[/bold green]  [dim]exploitable before, safe now[/dim]"))
         for ch in report.newly_fixed:
-            console.print(f"  [green]+[/green] {ch.attack_id}  [dim]{ch.baseline} -> {ch.candidate}[/dim]")
+            body.append(Text.from_markup(f"    [green]✓[/green] {ch.attack_id}  [dim]{ch.baseline} → {ch.candidate}[/dim]"))
+        body.append(Text(""))
     if report.inconclusive:
-        console.print("[yellow]inconclusive[/yellow]  [dim](a move involving unclear -- not counted)[/dim]")
+        body.append(Text.from_markup("[yellow]• inconclusive[/yellow]  [dim]a move involving unclear — not counted[/dim]"))
         for ch in report.inconclusive:
-            console.print(f"  [yellow]?[/yellow] {ch.attack_id}  [dim]{ch.baseline} -> {ch.candidate}[/dim]")
+            body.append(Text.from_markup(f"    [yellow]•[/yellow] {ch.attack_id}  [dim]{ch.baseline} → {ch.candidate}[/dim]"))
+        body.append(Text(""))
 
-    t = Table.grid(padding=(0, 2))
-    t.add_column(style="dim", justify="right", width=14)
-    t.add_column()
-    t.add_row("stable broken", str(len(report.stable_broken)))
-    t.add_row("stable safe", str(len(report.stable_safe)))
-    if report.only_in_baseline or report.only_in_candidate:
-        t.add_row("not in both", f"{len(report.only_in_baseline)} only baseline, "
-                                  f"{len(report.only_in_candidate)} only candidate")
-    console.print(t)
+    body.append(Text.from_markup(
+        f"[dim]stable:[/dim] [red]{len(report.stable_broken)} broken[/red] · "
+        f"[green]{len(report.stable_safe)} safe[/green]"
+        + (f"   [dim]· {len(report.only_in_baseline)}+{len(report.only_in_candidate)} not in both[/dim]"
+           if report.only_in_baseline or report.only_in_candidate else "")))
+
+    console.print(Panel(Group(*body), title="◈ regression diff", title_align="left",
+                        border_style=head[2], box=box.ROUNDED, padding=(1, 2)))
 
 
 def cmd_versions(session: Session, args: dict) -> None:
     """/versions   list saved runs."""
     versions = store.list_versions()
     if not versions:
-        console.print("[dim]no saved versions yet. /run name=v1 to make one.[/dim]")
+        console.print("  [dim]no saved versions yet — /run name=v1 to make one[/dim]")
         return
-    t = Table(header_style="bold cyan", expand=False)
-    t.add_column("version")
+    t = Table(box=box.SIMPLE_HEAVY, header_style=f"bold {BRAND}", expand=False, pad_edge=False)
+    t.add_column("version", style=f"bold {BRAND}")
     t.add_column("target", style="dim")
-    t.add_column("landed", justify="right")
+    t.add_column("landed", justify="right", style="red")
     t.add_column("pack", style="dim")
     for v in versions:
         t.add_row(v["version"], v["target"], str(v["counts"]["success"]), v["pack_hash"][:12])
@@ -227,17 +283,17 @@ def cmd_status(session: Session, args: dict) -> None:
     cmd_versions(session, {})
 
 
-HELP = """
-[bold cyan]asrt-bench[/bold cyan] [dim]— fire a pack, verify what lands, diff versions[/dim]
+HELP = f"""
+[bold {BRAND}]asrt-bench[/bold {BRAND}] [dim]— fire a pack, verify what lands, diff versions[/dim]
 
-  [bold]/target[/bold] [dim]<name>|list[/dim]        choose the system under test
-  [bold]/run[/bold] [dim]name=v1[/dim]               fire the pack at it, save as version v1
-  [bold]/diff[/bold] [dim]<v1> <v2>[/dim]            what changed between two versions
-  [bold]/versions[/bold]                 list saved runs
-  [bold]/status[/bold]                   current target + versions
+  [bold]/target[/bold] [dim]<name>│list[/dim]     choose the system under test
+  [bold]/run[/bold] [dim]name=v1[/dim]            fire the pack at it, save as version v1
+  [bold]/diff[/bold] [dim]<v1> <v2>[/dim]         what changed between two versions
+  [bold]/versions[/bold]              list saved runs
+  [bold]/status[/bold]                current target + versions
   [bold]/help[/bold]  [bold]/quit[/bold]
 
-[dim]tools are inert: nothing is emailed, written, queried, or executed for real.[/dim]
+  [dim]tools are inert — nothing is emailed, written, queried, or executed for real[/dim]
 """
 
 COMMANDS = {
@@ -261,10 +317,25 @@ def parse(line: str) -> tuple[str, dict]:
     return cmd, args
 
 
+def _welcome() -> None:
+    from asrtbench import __version__
+    logo = Text(_LOGO, style=f"bold {BRAND}")
+    tag = Text("Automated Safety Regression Testing", style="bold white")
+    sub = Text("fire a pack at an agent · verify what lands · diff versions", style="dim")
+    steps = Text.from_markup(
+        f"  [bold]1[/bold] [dim]/target[/dim] fixture      "
+        f"[bold]2[/bold] [dim]/run[/dim] name=v1      "
+        f"[bold]3[/bold] [dim]/diff[/dim] v1 v2")
+    console.print(Panel(
+        Group(Align.center(logo), Align.center(tag), Text(""), Align.center(sub),
+              Text(""), Rule(style="grey30"), Text(""), steps),
+        border_style=BRAND, box=box.ROUNDED, padding=(1, 3),
+        subtitle=f"[dim]v{__version__} · /help · /quit[/dim]"))
+    console.print()
+
+
 def main() -> None:
-    console.print(Text(_LOGO, style="bold cyan"))
-    console.print("[dim]Automated Safety Regression Testing — bench[/dim]  "
-                  "[dim]·  /help to begin[/dim]\n")
+    _welcome()
     session = Session()
 
     try:
@@ -296,7 +367,7 @@ def main() -> None:
         cmd, args = parse(line)
         fn = COMMANDS.get(cmd)
         if not fn:
-            console.print(f"[red]unknown command '{cmd}'[/red]  try /help")
+            console.print(f"  [red]✗ unknown command '{cmd}'[/red]  [dim]· try /help[/dim]")
             continue
         try:
             fn(session, args)

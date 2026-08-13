@@ -13,10 +13,18 @@ Success is a **fact about a recorded tool call**, not an opinion about text. Whe
 calls `send_email` to an attacker domain with your secret in the body, that call is in the
 trace or it isn't. No grader, no threshold, no drift.
 
+## Install (clone and run)
+
+No PyPI, no install step for the tool itself — clone it and run it:
+
 ```bash
-pip install asrt-bench
-asrt-bench
+git clone https://github.com/m4vic/asrt-bench
+cd asrt-bench
+pip install -r requirements.txt
+python -m asrtbench
 ```
+
+Then, in the console:
 
 ```
 asrt-bench ❯ /target fixture
@@ -24,6 +32,8 @@ asrt-bench ❯ /run name=v1
 asrt-bench ❯ /run name=v2
 asrt-bench ❯ /diff v1 v2
 ```
+
+Requires Python 3.10+. Run the tests with `pip install -r requirements-dev.txt && pytest`.
 
 ## How it works
 
