@@ -10,7 +10,7 @@
   <img src="docs/screenshot.png" alt="asrt-bench console" width="820">
 </p>
 
-> **This project is constantly evolving and is currently not production-grade.**
+⚠️ **This project is constantly evolving and is currently not production-grade.**
 > 
 asrt-bench answers one question, and answers it without a human or an LLM judge:
 
