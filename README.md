@@ -10,6 +10,8 @@
   <img src="docs/screenshot.png" alt="asrt-bench console" width="820">
 </p>
 
+> **This project is constantly evolving and is currently not production-grade.**
+> 
 asrt-bench answers one question, and answers it without a human or an LLM judge:
 
 > Did a poisoned input drive your agent to misuse a tool — and did your last change make that better or worse?
