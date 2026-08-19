@@ -35,7 +35,7 @@ from rich.table import Table
 from rich.text import Text
 
 from asrtbench.target import Target
-from asrtbench import runner, store
+from asrtbench import runner, store, attack_api
 from asrtbench.diff import compare, IncomparableRuns
 
 console = Console()
@@ -122,6 +122,30 @@ def cmd_run(session: Session, args: dict) -> None:
         console.print("[red]usage: /run name=v1   (a version name to save under)[/red]")
         return
     pack = args.get("pack")  # default: bundled starter pack
+
+    # source=api fetches a fresh pack from the ASRT attack API instead of the
+    # bundled one. An attack is just data, so a fetched pack runs identically.
+    source = args.get("source", "prebuilt")
+    if source == "api":
+        cfg = attack_api.ApiConfig.from_env()
+        if not cfg.is_configured:
+            _render_api_status(cfg)
+            return
+        try:
+            with console.status("[cyan]fetching a fresh pack from the attack API…[/cyan]"):
+                pack = attack_api.fetch_pack(
+                    cfg,
+                    target_profile=session.target.describe(),
+                    count=int(args.get("count", 12)),
+                    mode=args.get("mode", "discovery"),
+                )
+            console.print(f"  [{BRAND}]✓ pulled a fresh pack from the attack API[/{BRAND}]  [dim]· source=api[/dim]")
+        except attack_api.AttackAPIError as exc:
+            console.print(f"  [red]✗ attack API: {exc}[/red]")
+            return
+    elif source != "prebuilt":
+        console.print(f"  [red]✗ unknown source '{source}' (use prebuilt | api)[/red]")
+        return
 
     if session.target.kind == "model":
         missing = session.target.missing_credential()
@@ -283,14 +307,39 @@ def cmd_status(session: Session, args: dict) -> None:
     cmd_versions(session, {})
 
 
+def _render_api_status(cfg: "attack_api.ApiConfig") -> None:
+    """Show attack-API integration state and, when not usable, how to enable it."""
+    if cfg.is_configured:
+        t = Table.grid(padding=(0, 3))
+        t.add_column(style="dim", justify="right", width=9)
+        t.add_column()
+        t.add_row("source", f"[bold {BRAND}]api[/bold {BRAND}]  [dim]· fresh packs from the attack generator[/dim]")
+        t.add_row("url", f"{cfg.url}")
+        t.add_row("key", f"[green]{cfg.masked_key}[/green]")
+        t.add_row("", "")
+        t.add_row("use", "[bold]/run name=v1 source=api[/bold]  [dim]· or add mode=regression│discovery[/dim]")
+        console.print(Panel(t, title="◈ attack API — connected", title_align="left",
+                            border_style="green", box=box.ROUNDED, padding=(1, 2), expand=False))
+        return
+    body = Group(*[Text.from_markup(ln) for ln in attack_api.coming_soon_lines(cfg)])
+    console.print(Panel(body, title="◈ attack API — paid add-on", title_align="left",
+                        border_style=BRAND, box=box.ROUNDED, padding=(1, 2), expand=False))
+
+
+def cmd_api(session: Session, args: dict) -> None:
+    """/api   show attack-API integration status (free prebuilt vs paid generation)."""
+    _render_api_status(attack_api.ApiConfig.from_env())
+
+
 HELP = f"""
 [bold {BRAND}]asrt-bench[/bold {BRAND}] [dim]— fire a pack, verify what lands, diff versions[/dim]
 
   [bold]/target[/bold] [dim]<name>│list[/dim]     choose the system under test
-  [bold]/run[/bold] [dim]name=v1[/dim]            fire the pack at it, save as version v1
+  [bold]/run[/bold] [dim]name=v1 [source=api][/dim]  fire the pack at it, save as version v1
   [bold]/diff[/bold] [dim]<v1> <v2>[/dim]         what changed between two versions
   [bold]/versions[/bold]              list saved runs
   [bold]/status[/bold]                current target + versions
+  [bold]/api[/bold]                   attack-API integration (free prebuilt vs paid generation)
   [bold]/help[/bold]  [bold]/quit[/bold]
 
   [dim]tools are inert — nothing is emailed, written, queried, or executed for real[/dim]
@@ -298,7 +347,7 @@ HELP = f"""
 
 COMMANDS = {
     "target": cmd_target, "run": cmd_run, "diff": cmd_diff,
-    "versions": cmd_versions, "status": cmd_status,
+    "versions": cmd_versions, "status": cmd_status, "api": cmd_api,
 }
 
 

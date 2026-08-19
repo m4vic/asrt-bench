@@ -98,6 +98,35 @@ file read/write, database, network, messaging, secrets, and code execution — e
 with a benign control. It is a *demo*, enough to see the tool work end to end. Larger, real
 attack packs are published separately.
 
+## Attack sources — free pack, or the generation API
+
+An attack is just data, so where it comes from does not change how it runs, verifies, or diffs.
+There are two sources:
+
+| Source | What you get | Cost |
+|---|---|---|
+| `prebuilt` *(default)* | the bundled starter pack — offline, no key | **free** |
+| `api` | fresh, larger packs fetched from the ASRT attack generator, keyed to your account | paid add-on *(coming soon)* |
+
+The client for the API is already built in. Point it at a running generator with two env vars:
+
+```bash
+export ASRT_ATTACK_API_URL=https://api.neuralchemy.in   # or http://localhost:8000 for local testing
+export ASRT_ATTACK_API_KEY=<your account key>
+```
+
+Then fetch and fire a fresh pack instead of the bundled one:
+
+```
+asrt-bench ❯ /api                         # show integration status
+asrt-bench ❯ /run name=v1 source=api      # pull fresh attacks, run, save as v1
+```
+
+`source=api` also takes `mode=regression` (a frozen pack to re-run and `/diff` across versions)
+or `mode=discovery` (fresh attacks, deduped against what you've already run). Until a key is set,
+`source=api` prints how to get one — the free prebuilt pack always works offline. Get a key at
+**[neuralchemy.in](https://neuralchemy.in)** *(coming soon)*.
+
 ## Honest scope — read this
 
 - **It tests a model wired to *our* inert tools, not your deployed application.** The target

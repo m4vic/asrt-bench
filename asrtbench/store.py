@@ -67,7 +67,7 @@ def load(name: str) -> RunResult:
 def meta(name: str) -> dict:
     """The saved metadata for a version, without rebuilding the RunResult."""
     data = json.loads((store_dir() / f"{name}.json").read_text())
-    return {k: data[k] for k in ("version", "saved_at", "target", "pack_hash", "counts")}
+    return {k: data[k] for k in ("run_id", "version", "saved_at", "target", "pack_hash", "counts")}
 
 
 def list_versions() -> list[dict]:

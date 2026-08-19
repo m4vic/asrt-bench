@@ -11,4 +11,4 @@ asrt-bench replays known attacks and verifies them deterministically. It cannot
 discover a new one, which is exactly why it is safe to be public.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
