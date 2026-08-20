@@ -40,7 +40,7 @@ asrt-bench ❯ /run name=v2
 asrt-bench ❯ /diff v1 v2
 ```
 
-Requires Python 3.10+. Run the tests with `pip install -r requirements-dev.txt && pytest`.
+Requires Python 3.10+. Run the tests with `pip install pytest && pytest`.
 
 ## How it works
 

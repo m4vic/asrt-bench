@@ -14,6 +14,16 @@ from __future__ import annotations
 import json
 from typing import Any, Awaitable, Callable, Mapping
 
+
+class ToolCallingUnsupported(RuntimeError):
+    """The target model rejected a tool-calling request (HTTP 400).
+
+    Almost always means the model has no tool/function-calling support, so it
+    can't be a target here. Raised early so a run fails fast with a clear message
+    instead of every attack coming back 'unclear: HTTP 400'.
+    """
+
+
 # One schema, function-call shape (shared by Ollama and OpenAI-style APIs).
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
@@ -194,6 +204,7 @@ def ollama_chat_fn(
         }
 
         def _blocking() -> dict[str, Any]:
+            from urllib import error as urlerror
             body = json.dumps(payload).encode("utf-8")
             req = request.Request(
                 f"{base}/api/chat",
@@ -201,8 +212,22 @@ def ollama_chat_fn(
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with request.urlopen(req, timeout=180) as response:
-                return json.loads(response.read().decode("utf-8"))
+            try:
+                with request.urlopen(req, timeout=180) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urlerror.HTTPError as exc:
+                if exc.code == 400:
+                    detail = ""
+                    try:
+                        detail = exc.read().decode("utf-8", "replace")[:160]
+                    except Exception:
+                        pass
+                    raise ToolCallingUnsupported(
+                        f"model {model!r} rejected the tool-calling request (HTTP 400) — it "
+                        f"likely does not support tools, so it can't be a target. Use a "
+                        f"tools-capable model such as qwen2.5:7b-instruct. [{detail}]"
+                    ) from exc
+                raise
 
         data = await asyncio.to_thread(_blocking)
         message = data.get("message", {}) or {}

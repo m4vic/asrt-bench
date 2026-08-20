@@ -30,6 +30,7 @@ from typing import Any, Callable
 from asrtbench.core import TargetProfile
 from asrtbench.harness import (
     DirectiveFollowingAgent, ModelAgent, ollama_chat_fn, openai_chat_fn,
+    TOOL_SCHEMAS, ToolCallingUnsupported,
 )
 
 # Bundled example configs; `/target <name>` resolves a bare name here.
@@ -121,6 +122,37 @@ class Target:
                 pass
             if not os.environ.get(self.api_key_env):
                 return self.api_key_env
+        return None
+
+    def _chat_fn(self):
+        """The raw chat_fn for a model target (None for a fixture)."""
+        if self.kind != "model":
+            return None
+        if self.provider == "openai":
+            base = self.api_base or "https://api.openai.com/v1"
+            return openai_chat_fn(self.model, api_base=base, api_key_env=self.api_key_env)
+        base = self.api_base or "http://localhost:11434"
+        return ollama_chat_fn(self.model, api_base=base)
+
+    def tool_support_error(self) -> str | None:
+        """Pre-flight: probe whether this model accepts tool-calling. Returns a
+        clear message if it does not (so a run fails fast instead of every attack
+        coming back 'unclear: HTTP 400'), or None if OK / not applicable.
+
+        Other failures (server down, bad host) return None on purpose -- they
+        surface honestly during the run itself; this check is only for the
+        specific, common 'this model has no tools' foot-gun.
+        """
+        chat = self._chat_fn()
+        if chat is None:
+            return None
+        import asyncio
+        try:
+            asyncio.run(chat([{"role": "user", "content": "ping"}], TOOL_SCHEMAS))
+        except ToolCallingUnsupported as exc:
+            return str(exc)
+        except Exception:
+            return None
         return None
 
     def agent_factory(self) -> Callable[[dict[str, str]], Any]:

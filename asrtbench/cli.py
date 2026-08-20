@@ -152,6 +152,12 @@ def cmd_run(session: Session, args: dict) -> None:
         if missing:
             console.print(f"[red]{session.target.name} needs {missing}. Set it, then retry.[/red]")
             return
+        with console.status("[cyan]checking the target model supports tool-calling…[/cyan]"):
+            tool_err = session.target.tool_support_error()
+        if tool_err:
+            console.print(Panel(tool_err, title="◈ target can't be used", title_align="left",
+                                border_style="red", box=box.ROUNDED, padding=(1, 2), expand=False))
+            return
 
     if store.exists(name):
         old = store.meta(name)
