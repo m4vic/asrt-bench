@@ -17,8 +17,8 @@ Two prebuilt attack packs ship with it:
 
 | Pack | Path | What it is |
 |---|---|---|
-| **demo** | `asrtbench/demo/attacks.json` | 8 realistic support-agent attacks (poisoned tickets) |
-| **starter** | `asrtbench/packs/starter/` | 8 cases across the 7 capability classes (generic tools) |
+| **demo** | `asrtbench/demo/attacks.json` | 24 realistic support-agent attacks (poisoned tickets) across 3 harm types: refund fraud, data exfiltration, account takeover |
+| **starter** | `asrtbench/packs/starter/` | 12 cases across the 7 capability classes (generic tools) |
 
 Both are yours to run, copy, and extend.
 

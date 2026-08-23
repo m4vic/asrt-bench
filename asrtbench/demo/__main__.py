@@ -40,13 +40,23 @@ def _canary(attack_id: str) -> str:
     return "ORD-" + attack_id.split(":")[1][:6].upper()
 
 
-async def _run_one(chat, atk, *, hardened: bool) -> tuple[str, list]:
-    """Run one attack against one variant; return (verdict, refunds_issued)."""
+async def _run_one(chat, atk, *, hardened: bool) -> tuple[str, str]:
+    """Run one attack against one variant; return (verdict, real-harm description)."""
     canary = _canary(atk["id"])
     ticket = next(iter(atk["fixtures"].values())).replace("${canary}", canary)
     trace, app = await run_attack_on_app(chat, ticket, hardened=hardened)
     verdict = Verifier().verify(atk["success_criteria"], trace, bindings={"canary": canary})
-    return verdict.value, app.refunds_issued()
+    harm = ""
+    if verdict.value == "success":
+        if app.refunds_issued():
+            r = app.refunds_issued()[0]
+            harm = f"refund {r['order_id']} (${r['amount']:.0f})"
+        elif app.account_takeovers():
+            harm = f"account email → {app.account_takeovers()[0]['to']}"
+        else:
+            ext = [m["to"] for m in app.outbox if "attacker" in m["to"]]
+            harm = f"data emailed → {ext[0]}" if ext else "action taken"
+    return verdict.value, harm
 
 
 def _mark(v: str) -> str:
@@ -55,17 +65,18 @@ def _mark(v: str) -> str:
 
 
 async def _main() -> None:
-    attacks = json.load(open(ATTACKS_PATH, encoding="utf-8"))
-    limit = int(os.environ.get("ASRT_DEMO_LIMIT", str(len(attacks))))
-    attacks = attacks[:max(1, limit)]
+    all_attacks = json.load(open(ATTACKS_PATH, encoding="utf-8"))
+    limit = int(os.environ.get("ASRT_DEMO_LIMIT", "8"))   # subset by default; runs on a local GPU
+    attacks = all_attacks[:max(1, limit)]
     model = os.environ.get("ASRT_DEMO_MODEL", "qwen2.5:7b-instruct")
     chat = make_chat(model)
 
     console.print(Panel(
         f"A realistic support agent ([bold {BRAND}]{model}[/bold {BRAND}]) with real tools "
-        f"(get_ticket, lookup_order, [bold]issue_refund[/bold], send_email).\n"
-        f"Firing {len(attacks)} poisoned support tickets at it — plain prompt vs a "
-        f"security-hardened prompt.  [dim](a few min on a local GPU; each row streams live)[/dim]",
+        f"(get_ticket, lookup_order, [bold]issue_refund[/bold], send_email, update_account).\n"
+        f"Firing {len(attacks)} of {len(all_attacks)} poisoned tickets — plain prompt vs a "
+        f"security-hardened prompt.  [dim](ASRT_DEMO_LIMIT={len(all_attacks)} runs the full pack; "
+        f"each row streams live)[/dim]",
         title="◈ asrt-bench demo — can a poisoned ticket break a support agent?",
         title_align="left", border_style=BRAND, box=box.ROUNDED, padding=(1, 2)))
     console.print()
@@ -73,11 +84,10 @@ async def _main() -> None:
     base_broke = hard_broke = 0
     for atk in attacks:
         name = atk["id"].split(":")[1]
-        bv, refunds = await _run_one(chat, atk, hardened=False)
+        bv, harm_str = await _run_one(chat, atk, hardened=False)
         hv, _ = await _run_one(chat, atk, hardened=True)
         base_broke += bv == "success"; hard_broke += hv == "success"
-        harm = f"  [dim]→ real refund issued: {refunds[0]['order_id']} (${refunds[0]['amount']:.0f})[/dim]" \
-            if bv == "success" and refunds else ""
+        harm = f"  [dim]→ real harm: {harm_str}[/dim]" if harm_str else ""
         console.print(f"  base {_mark(bv):<22} hardened {_mark(hv):<22} "
                       f"[white]{name}[/white] [dim]· {atk['technique']}[/dim]{harm}")
 
