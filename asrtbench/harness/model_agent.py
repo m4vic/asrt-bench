@@ -132,49 +132,76 @@ async def drive_tool_loop(
     tools: Any,
     *,
     max_turns: int = 8,
+    tool_schemas: list[dict[str, Any]] | None = None,
 ) -> str:
     """Run the model's tool-calling loop over an existing message list.
 
     Mutates `messages` in place (appending assistant + tool turns) and returns
     the model's final text. Shared by the single-turn ModelAgent and the
-    multi-turn harness so both drive tools identically -- the only difference
-    between them is how many user turns arrive, not how a turn is executed.
+    multi-turn harness so both drive tools identically.
+
+    `tool_schemas` lets a realistic target advertise its OWN tools; it defaults
+    to the built-in seven. Any tool named in the schemas is dispatched
+    generically by name (the toolset records it), so a target's tools need no
+    hardcoded harness method.
     """
+    schemas = tool_schemas if tool_schemas is not None else TOOL_SCHEMAS
+    allowed = {s["function"]["name"] for s in schemas} or _TOOL_NAMES
+    seen_calls: dict[str, int] = {}
     reply: Mapping[str, Any] = {"content": ""}
     for _ in range(max_turns):
-        reply = await chat_fn(messages, TOOL_SCHEMAS)
+        reply = await chat_fn(messages, schemas)
         calls = list(reply.get("tool_calls") or [])
         messages.append({"role": "assistant", "content": reply.get("content") or "", "tool_calls": calls})
         if not calls:
             break
+        stuck = False
         for call in calls:
             name = call.get("name")
             args = call.get("args") or {}
-            if name not in _TOOL_NAMES:
+            key = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
+            repeats = seen_calls.get(key, 0)
+            seen_calls[key] = repeats + 1
+
+            if name not in allowed:
                 content = json.dumps({"error": f"unknown tool: {name}"})
-            else:
+            elif repeats == 0:
                 # A tool call may raise ToolBudgetExceeded; that propagates to
                 # the Harness, which records it as a truncated run.
                 result = await getattr(tools, name)(**args)
                 content = result if isinstance(result, str) else json.dumps(result)
+            else:
+                # Loop guard (constructive): a small model sometimes fixates on
+                # one call and never acts. Nudge it to proceed instead of
+                # re-running, so the run stays alive rather than truncating.
+                content = json.dumps({"note": f"You already called {name} with these "
+                    "arguments; the result is above. Do not repeat it -- proceed to "
+                    "complete the task now."})
+                if repeats >= 3:
+                    stuck = True
             messages.append({"role": "tool", "name": name, "content": content})
+        if stuck:
+            break
     return reply.get("content") or ""
 
 
 class ModelAgent:
     """Drives InstrumentedTools with a model, via a provider-neutral chat_fn."""
 
-    def __init__(self, chat_fn: ChatFn, *, system_prompt: str | None = None, max_turns: int = 8) -> None:
+    def __init__(self, chat_fn: ChatFn, *, system_prompt: str | None = None, max_turns: int = 8,
+                 tool_schemas: list[dict[str, Any]] | None = None) -> None:
         self._chat = chat_fn
         self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self._max_turns = max_turns
+        self._tool_schemas = tool_schemas
 
     async def run(self, task: str, tools: Any) -> str:
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": task},
         ]
-        return await drive_tool_loop(self._chat, messages, tools, max_turns=self._max_turns)
+        return await drive_tool_loop(self._chat, messages, tools, max_turns=self._max_turns,
+                                     tool_schemas=self._tool_schemas)
 
 
 def ollama_chat_fn(
