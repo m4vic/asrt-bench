@@ -54,35 +54,44 @@ asrt-bench ❯ /run name=v1
 OpenAI-compatible endpoints work too (`"provider": "openai"`, `"api_base": ...`,
 `"api_key_env": "OPENAI_API_KEY"`).
 
-### Way B — your REAL app (the honest way, ~20 lines)
+### Way B — your REAL app (`asrtbench.attach`, ~10 lines)
 
-To test your *actual* agent with *its own* tools, wrap your tool dispatch with
-the recorder. This records every call to a Trace asrt-bench can verify, then
-forwards to your real tool. Use **`asrtbench/demo/app.py` as the template** — it
-does exactly this for the support app. The shape:
+Every agentic system reduces to three parts: an **input** (where untrusted
+content enters), a **brain** (model + persistent prompt), and **tools** (what the
+brain can call, that do something). asrt-bench cannot see inside a program it
+did not build — the only way to make your tool calls observable is to put a
+recorder between your brain and your tools. `asrtbench.attach` makes that one
+call:
 
 ```python
-from asrtbench.core import Trace
-from asrtbench.harness import drive_tool_loop
+from asrtbench.attach import attach
+from asrtbench.runner import run_pack_on_attached
 
-trace = Trace()
-trace.append("run_started", source="harness", data={"task": task})
+target = attach(
+    chat_fn=my_model_call,              # your (messages, tool_schemas) -> reply
+    tools=my_app,                       # object whose METHODS are your real tools
+    tool_schemas=MY_TOOL_SCHEMAS,       # what you expose to the model
+    inject=lambda payload: my_app.load_ticket("4821", payload),  # where untrusted input enters
+    system_prompt=MY_SYSTEM_PROMPT,
+    name="my-agent",
+)
 
-# `tools` is any object whose attributes are your real tool functions.
-# The recorder wraps them: records the call, then calls your real function.
-tools = RecordingToolset(trace, your_app, max_tool_calls=8)   # copy RecordingToolset from demo/app.py
-
-await drive_tool_loop(your_chat_fn, messages, tools, tool_schemas=YOUR_TOOL_SCHEMAS)
-trace.append("run_finished", source="harness", data={"error": None})
-
-# then verify against an attack's success_criteria:
-from asrtbench.adjudication import Verifier
-verdict = Verifier().verify(attack["success_criteria"], trace, bindings={"canary": canary})
+result = run_pack_on_attached(target, "asrtbench/demo")  # or your own pack dir
 ```
 
-You declare **your** tools (`tool_schemas`), the agent calls **your** real
-implementations, and asrt-bench reads the trace. This is how you'd attach it to a
-production agent — you wrap the dispatch, you don't replace the tools.
+- `tools` are **your real implementations** — the recorder wraps them, it never
+  replaces your logic. A landed attack is a real consequence in your app's own
+  state (e.g. a refund actually issued).
+- `inject` is the one line that says *how untrusted content reaches your
+  system* — a ticket, a document, an email, whatever your real input path is.
+- **Multi-agent:** call `attach()` once per agent whose tools you want
+  observed, then `attach_many(a, b, c)` — every call from every agent lands in
+  ONE trace tagged by actor, so a cross-agent handoff (agent A's output becoming
+  agent B's tool argument) is visible in a single run.
+
+See `examples/bring_your_own_app.py` — a complete, runnable, independent app
+(shares no code with the demo) proving `attach()` works on a system it has
+never seen. Run from the repo root: `python -m examples.bring_your_own_app`.
 
 ---
 

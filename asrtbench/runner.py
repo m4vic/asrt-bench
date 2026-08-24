@@ -1,15 +1,19 @@
 """Fire a pack at a target and collect per-attack verdicts.
 
-This is the engine behind `/attack` (the CLI is a later increment). It loads a
-pack, mints a per-case canary, runs each attack through the harness against the
-selected target, and verifies deterministically. `unclear` is kept as its own
-outcome -- never folded into a pass rate, never counted as pass or fail.
+This is the engine behind `/run`. It loads a pack, mints a per-case canary, runs
+each attack through a harness against the selected target, and verifies
+deterministically. `unclear` is kept as its own outcome -- never folded into a
+pass rate, never counted as pass or fail.
 
-Every tool the harness lends is inert: nothing is emailed, written, queried, or
-executed for real. So there is no live/dry-run distinction to make yet -- a run
-against the current target model can have no real side effect by construction.
-That safety knob becomes meaningful only if asrt-bench ever drives a target's
-OWN (real) tools, which it does not today.
+Two target shapes:
+- `run_pack(Target, ...)` -- asrt-bench's own inert tools (nothing emailed,
+  written, queried, or executed for real). Safe by construction; no setup.
+- `run_pack_on_attached(AttachedTarget, ...)` -- YOUR real agent, wired via
+  `asrtbench.attach`. Tools are real; side effects are real (in whatever system
+  you attached, e.g. a mock app's own state). The recorder wraps your tools
+  rather than replacing them, so what lands here is a fact about your system.
+
+Both produce the same `RunResult`, so `/diff` compares them identically.
 """
 
 from __future__ import annotations
@@ -109,6 +113,58 @@ def run_pack(
             evidence_seq=verdict.evidence.get("trace_seq", []),
             blast_radius=verdict.evidence.get("blast_radius", {}),
             tool_calls=run.tool_calls,
+        )
+        result.outcomes.append(outcome)
+        _emit("case_verdict", attack_id=case.attack_id, verdict=verdict.value,
+              blast_radius=outcome.blast_radius, evidence_seq=outcome.evidence_seq)
+
+    _emit("run_finished", run_id=run_id, counts=result.counts())
+    return result
+
+
+def run_pack_on_attached(
+    attached: "Any",
+    pack_dir: str | None = None,
+    *,
+    emit: Callable[[str, dict[str, Any]], None] | None = None,
+) -> RunResult:
+    """Fire a pack at a target attached via `asrtbench.attach` -- your real
+    agent, real tools, wired through the recorder. Same pack loading, same
+    canary minting, same Verifier, same `RunResult` shape as `run_pack`, so a
+    run against your system diffs against another run of your system exactly
+    like two runs of the built-in fixture/model targets do.
+
+    Each attack's first fixture value is treated as the poisoned payload passed
+    to `attached.inject(...)` -- the same convention the demo target uses.
+    """
+    pack_dir = pack_dir or starter_pack_dir()
+    cases = load_pack(pack_dir)
+    run_id = f"run-{uuid.uuid4().hex[:8]}"
+    suite = Suite.freeze(os.path.basename(pack_dir.rstrip("/\\")) or "pack", cases)
+    result = RunResult(run_id=run_id, target=attached.name, pack_hash=suite.suite_hash)
+
+    def _emit(stage: str, **p: Any) -> None:
+        if emit is not None:
+            emit(stage, p)
+
+    _emit("run_started", run_id=run_id, target=attached.name, total=len(cases), pack_hash=suite.suite_hash)
+    verifier = Verifier()
+
+    for case in cases:
+        canary = _canary(run_id, case)
+        payload = next(iter((case.fixtures or {}).values()), "").replace("${canary}", canary)
+        trace = asyncio.run(attached.run(case.task or "", payload))
+        verdict = verifier.verify(case.success_criteria, trace, bindings={"canary": canary})
+
+        n_calls = sum(1 for e in trace.events if e.kind == "tool_call")
+        outcome = CaseOutcome(
+            attack_id=case.attack_id,
+            category=case.category,
+            verdict=verdict.value,
+            reason=verdict.reason,
+            evidence_seq=verdict.evidence.get("trace_seq", []),
+            blast_radius=verdict.evidence.get("blast_radius", {}),
+            tool_calls=n_calls,
         )
         result.outcomes.append(outcome)
         _emit("case_verdict", attack_id=case.attack_id, verdict=verdict.value,

@@ -22,7 +22,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:system_tag_refund:002",
@@ -47,7 +49,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:supervisor_urgent_refund:003",
@@ -72,7 +76,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:fraudcheck_auto_refund:004",
@@ -97,7 +103,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:audit_exfil_email:005",
@@ -122,7 +130,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:metadata_refund:006",
@@ -147,7 +157,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:billing_doublecharge_refund:007",
@@ -172,7 +184,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:chained_refund_and_exfil:008",
@@ -209,7 +223,9 @@
           ]
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud_or_exfil"
   },
   {
     "id": "support:loyalty_credit_refund:009",
@@ -234,7 +250,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:csat_recovery_refund:010",
@@ -259,7 +277,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:manager_signature_refund:011",
@@ -284,7 +304,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:footer_hidden_refund:012",
@@ -309,7 +331,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:retry_confirm_refund:013",
@@ -334,7 +358,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:kb_quote_refund:014",
@@ -359,7 +385,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "refund_fraud"
   },
   {
     "id": "support:verification_exfil:015",
@@ -384,7 +412,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:gdpr_request_exfil:016",
@@ -409,7 +439,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:backup_export_exfil:017",
@@ -434,7 +466,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:debug_dump_exfil:018",
@@ -459,7 +493,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:supervisor_cc_exfil:019",
@@ -484,7 +520,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "data_exfiltration"
   },
   {
     "id": "support:email_change_takeover:020",
@@ -509,7 +547,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "account_takeover"
   },
   {
     "id": "support:security_reset_takeover:021",
@@ -534,7 +574,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "account_takeover"
   },
   {
     "id": "support:merge_accounts_takeover:022",
@@ -559,7 +601,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "account_takeover"
   },
   {
     "id": "support:verified_change_takeover:023",
@@ -584,7 +628,9 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "account_takeover"
   },
   {
     "id": "support:fraud_lock_takeover:024",
@@ -609,6 +655,8 @@
           }
         }
       ]
-    }
+    },
+    "channel": "action",
+    "category": "account_takeover"
   }
 ]
