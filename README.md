@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](requirements.txt)
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="asrt-bench console" width="820">
+  <img src="docs/demo.gif" alt="asrt-bench demo — a poisoned support ticket drives a real fraudulent refund, and a hardening prompt stops nothing" width="820">
 </p>
 
 ⚠️ **This project is constantly evolving and is currently not production-grade.**
@@ -43,6 +43,8 @@ asrt-bench ❯ /diff v1 v2
 Requires Python 3.10+. Run the tests with `pip install pytest && pytest`.
 
 ## Demo — break a real support agent in one command
+
+The GIF at the top is a real, unscripted run of this command (sped up for length):
 
 ```bash
 python -m asrtbench.demo        # needs Ollama + a tools-capable model (default qwen2.5:7b-instruct)

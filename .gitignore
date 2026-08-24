@@ -16,3 +16,4 @@ htmlcov/
 runs/
 # maintainer-local provenance marker (written by the sync tool); never published
 asrtbench/_synced_from.txt
+*.mp4
