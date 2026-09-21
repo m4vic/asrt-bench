@@ -3,6 +3,9 @@
 This module converts mixed attack JSON records into one `AttackCase` shape.
 ASRT uses this normalized shape for selection, generation, improvement, and
 later SafetyDiff comparisons.
+
+Diagram box: ATTACK PACK — the parser that turns pack JSON into objects.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from dataclasses import dataclass, field
@@ -49,7 +52,7 @@ class AttackCase:
     metadata: dict = field(default_factory=dict)
 
 
-    @staticmethod 
+    @staticmethod  # doesn't touch cls or self -- it only uses its own parameters
     def infer_intent(category: str, prompt: str, tags: list[str]) -> str | None:
         text = f"{category} {' '.join(tags)} {prompt}".lower()
 
@@ -189,8 +192,6 @@ if __name__ == "__main__":
 
 
 
-
-    
 
 
 

@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asrt-bench"
-version = "0.2.0"
+# Single source of truth is asrtbench/__init__.py, read dynamically below.
+# Declaring it in both places guarantees they drift.
+dynamic = ["version"]
 description = "Fire a frozen attack pack at your AI agent, verify what lands from its tool-call trace, and diff versions to catch safety regressions."
 readme = "README.md"
 # SPDX string form; the table form is deprecated and stops working 2027-02.
@@ -38,6 +40,9 @@ Source = "https://github.com/m4vic/asrt-bench"
 # Installing puts `asrt-bench` on PATH. `python -m asrtbench` keeps working for
 # anyone running from a clone without installing.
 asrt-bench = "asrtbench.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "asrtbench.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["asrtbench*"]
