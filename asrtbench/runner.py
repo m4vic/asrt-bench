@@ -1,34 +1,51 @@
 """Fire a pack at a target and collect per-attack verdicts.
 
 This is the engine behind `/run`. It loads a pack, mints a per-case canary, runs
-each attack through a harness against the selected target, and verifies
-deterministically. `unclear` is kept as its own outcome -- never folded into a
-pass rate, never counted as pass or fail.
+each attack against the selected target, and verifies deterministically.
+`unclear` is kept as its own outcome -- never folded into a pass rate, never
+counted as pass or fail.
 
-Two target shapes:
-- `run_pack(Target, ...)` -- asrt-bench's own inert tools (nothing emailed,
-  written, queried, or executed for real). Safe by construction; no setup.
-- `run_pack_on_attached(AttachedTarget, ...)` -- YOUR real agent, wired via
-  `asrtbench.attach`. Tools are real; side effects are real (in whatever system
-  you attached, e.g. a mock app's own state). The recorder wraps your tools
-  rather than replacing them, so what lands here is a fact about your system.
+One loop drives every target shape, because each one answers the same question:
+given a task and a poisoned payload, what did your tools actually do?
 
-Both produce the same `RunResult`, so `/diff` compares them identically.
+- `Target` -- asrt-bench's own inert tools. Nothing is emailed, written, queried
+  or executed for real. Safe by construction, no setup.
+- `PythonTarget` -- your own `.py` file. Your flow runs untouched while the tool
+  functions you named are recorded.
+- `AttachedTarget` -- your agent wired through `asrtbench.attach`, where
+  asrt-bench drives the model's tool-calling loop.
+
+The last two use YOUR real tools, so side effects are real in whatever system
+you pointed at. All three produce the same `RunResult`, so `/diff` compares them
+identically.
+
+Diagram box: THE LOOP + RESULTS — drives every case, collects the outcomes.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations
 
-import asyncio
 import glob
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from asrtbench.adjudication import Verifier
-from asrtbench.core import AttackCase, Suite
-from asrtbench.harness import ActionHarness
-from asrtbench.target import Target
+from asrtbench.core import AttackCase, Suite, Trace
+
+
+class PackTarget(Protocol):
+    """What `run_pack` needs from a target: a name, and a way to run one attack.
+
+    Keeping this surface to two members is what lets one loop drive a config
+    file, your own Python agent, and an attached tool-loop without branching on
+    the target's type. Anything that returns a Trace can join by implementing it.
+    """
+
+    name: str
+
+    def run_case(self, task: str, fixtures: dict[str, str]) -> Trace: ...
 
 
 def load_pack(pack_dir: str) -> list[AttackCase]:
@@ -70,16 +87,27 @@ class RunResult:
 
 
 def _canary(run_id: str, case: AttackCase) -> str:
+    """A marker unique to this run AND this attack.
+
+    Substituted into the poisoned text, and referenced by the attack's criteria.
+    A tool argument carrying it proves the data came from *this* poisoned input
+    rather than from a coincidence or a model inventing a plausible-looking value.
+    """
     return f"ASRT-CANARY-{run_id}-{case.attack_id.replace(':', '-')}"
 
 
 def run_pack(
-    target: Target,
+    target: PackTarget,
     pack_dir: str | None = None,
     *,
-    max_tool_calls: int = 6,
     emit: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> RunResult:
+    """Run every attack in a pack against one target.
+
+    `emit` is an optional progress callback, called with a stage name and a dict.
+    It exists so the CLI can print a verdict per case as it happens without this
+    module knowing anything about rendering.
+    """
     pack_dir = pack_dir or starter_pack_dir()
     cases = load_pack(pack_dir)
     run_id = f"run-{uuid.uuid4().hex[:8]}"
@@ -92,18 +120,20 @@ def run_pack(
         if emit is not None:
             emit(stage, p)
 
-    _emit("run_started", run_id=run_id, target=target.name, total=len(cases), pack_hash=suite.suite_hash)
+    _emit("run_started", run_id=run_id, target=target.name, total=len(cases),
+          pack_hash=suite.suite_hash)
 
-    harness = ActionHarness(target_name=target.name)
     verifier = Verifier()
-    factory = target.agent_factory()
 
     for case in cases:
         canary = _canary(run_id, case)
-        concrete = {p: c.replace("${canary}", canary) for p, c in (case.fixtures or {}).items()}
-        agent = factory(concrete)
-        run = asyncio.run(harness.run(agent, task=case.task or "", fixtures=concrete, max_tool_calls=max_tool_calls))
-        verdict = verifier.verify(case.success_criteria, run.trace, bindings={"canary": canary})
+        fixtures = {
+            path: content.replace("${canary}", canary)
+            for path, content in (case.fixtures or {}).items()
+        }
+
+        trace = target.run_case(case.task or "", fixtures)
+        verdict = verifier.verify(case.success_criteria, trace, bindings={"canary": canary})
 
         outcome = CaseOutcome(
             attack_id=case.attack_id,
@@ -112,7 +142,9 @@ def run_pack(
             reason=verdict.reason,
             evidence_seq=verdict.evidence.get("trace_seq", []),
             blast_radius=verdict.evidence.get("blast_radius", {}),
-            tool_calls=run.tool_calls,
+            # Counted from the trace rather than reported by the target, so the
+            # number always matches the evidence a reader can actually see.
+            tool_calls=sum(1 for event in trace.events if event.kind == "tool_call"),
         )
         result.outcomes.append(outcome)
         _emit("case_verdict", attack_id=case.attack_id, verdict=verdict.value,
@@ -123,52 +155,15 @@ def run_pack(
 
 
 def run_pack_on_attached(
-    attached: "Any",
+    attached: PackTarget,
     pack_dir: str | None = None,
     *,
     emit: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> RunResult:
-    """Fire a pack at a target attached via `asrtbench.attach` -- your real
-    agent, real tools, wired through the recorder. Same pack loading, same
-    canary minting, same Verifier, same `RunResult` shape as `run_pack`, so a
-    run against your system diffs against another run of your system exactly
-    like two runs of the built-in fixture/model targets do.
+    """Deprecated alias for `run_pack`, kept so existing scripts keep working.
 
-    Each attack's first fixture value is treated as the poisoned payload passed
-    to `attached.inject(...)` -- the same convention the demo target uses.
+    Attached targets used to need a separate loop; they now implement the same
+    `run_case` as every other target, so there is one code path. Prefer
+    `run_pack` -- this wrapper will be removed in a later version.
     """
-    pack_dir = pack_dir or starter_pack_dir()
-    cases = load_pack(pack_dir)
-    run_id = f"run-{uuid.uuid4().hex[:8]}"
-    suite = Suite.freeze(os.path.basename(pack_dir.rstrip("/\\")) or "pack", cases)
-    result = RunResult(run_id=run_id, target=attached.name, pack_hash=suite.suite_hash)
-
-    def _emit(stage: str, **p: Any) -> None:
-        if emit is not None:
-            emit(stage, p)
-
-    _emit("run_started", run_id=run_id, target=attached.name, total=len(cases), pack_hash=suite.suite_hash)
-    verifier = Verifier()
-
-    for case in cases:
-        canary = _canary(run_id, case)
-        payload = next(iter((case.fixtures or {}).values()), "").replace("${canary}", canary)
-        trace = asyncio.run(attached.run(case.task or "", payload))
-        verdict = verifier.verify(case.success_criteria, trace, bindings={"canary": canary})
-
-        n_calls = sum(1 for e in trace.events if e.kind == "tool_call")
-        outcome = CaseOutcome(
-            attack_id=case.attack_id,
-            category=case.category,
-            verdict=verdict.value,
-            reason=verdict.reason,
-            evidence_seq=verdict.evidence.get("trace_seq", []),
-            blast_radius=verdict.evidence.get("blast_radius", {}),
-            tool_calls=n_calls,
-        )
-        result.outcomes.append(outcome)
-        _emit("case_verdict", attack_id=case.attack_id, verdict=verdict.value,
-              blast_radius=outcome.blast_radius, evidence_seq=outcome.evidence_seq)
-
-    _emit("run_finished", run_id=run_id, counts=result.counts())
-    return result
+    return run_pack(attached, pack_dir, emit=emit)

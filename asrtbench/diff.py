@@ -14,6 +14,9 @@ never fully got:
 
 `unclear` is never counted as pass or fail. A transition into or out of unclear
 is reported as an inconclusive change, kept apart from real broken/fixed moves.
+
+Diagram box: DIFF — compares two saved runs.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

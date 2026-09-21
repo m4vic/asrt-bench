@@ -10,6 +10,9 @@ The attacker-knowledge knob is part of the threat model: how much the attacker
 knows about the target is a choice, not a fact. The gap between a BLIND attacker
 and a SCHEMA-aware one measures how much a system's safety rests on obscurity --
 fragile armor -- versus real guardrails.
+
+Diagram box: TARGET ADAPTER — the capability summary `/target` prints.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

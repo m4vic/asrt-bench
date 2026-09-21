@@ -33,7 +33,7 @@ stop nothing. `ASRT_DEMO_LIMIT=2` for a quick run.
 
 ---
 
-## 2. Test YOUR agent — two ways
+## 2. Test YOUR agent — three ways
 
 ### Way A — a model + a tool surface (quick, config only)
 
@@ -54,7 +54,49 @@ asrt-bench ❯ /run name=v1
 OpenAI-compatible endpoints work too (`"provider": "openai"`, `"api_base": ...`,
 `"api_key_env": "OPENAI_API_KEY"`).
 
-### Way B — your REAL app (`asrtbench.attach`, ~10 lines)
+### Way B — your own Python agent, tools recorded (`.py` target)
+
+Use this when **your code** decides which tool to call — a LangGraph node, a
+hand-written router, any "agent framework with a graph". There is no model
+tool-calling loop for asrt-bench to sit inside, so it records your tool
+*functions* instead: it swaps each one for a wrapper that logs the call and
+forwards to the real function, runs your flow untouched, then puts the
+originals back.
+
+Write one file. Nothing in your app changes:
+
+```python
+# my_target.py
+import my_app.flow as flow          # the module that CALLS the tools
+
+NAME  = "my-agent"
+TOOLS = [(flow, "lookup_order"), (flow, "issue_refund")]
+
+def run(payload):
+    flow.handle({"ticket": payload})   # your normal front door
+```
+
+```
+asrt-bench ❯ /target ./my_target.py
+asrt-bench ❯ /run name=v1 pack=./my_pack
+```
+
+Two things to get right:
+
+- **Patch where a tool is CALLED, not where it is defined.** `from tools import
+  lookup_order` binds a *separate* name in the importing module, so `TOOLS` must
+  name that module, not `tools`. Get this wrong and nothing is recorded — and an
+  empty trace verifies as `defended`, a false clean pass rather than an error.
+  asrt-bench prints a loud warning when a whole run records zero tool calls.
+- **Ship a wiring control in your pack**: a benign input whose criteria name the
+  tool it *should* reach, expected to verify as `success`. It is not a
+  vulnerability — it is the proof the recorder is on the wire. If it comes back
+  `defended`, every other verdict in that run is meaningless.
+
+A complete runnable example, with a pack containing an attack, a benign control
+and a wiring control: `examples/code_routed_agent.py` (no model needed).
+
+### Way C — your REAL app driven by a model (`asrtbench.attach`, ~10 lines)
 
 Every agentic system reduces to three parts: an **input** (where untrusted
 content enters), a **brain** (model + persistent prompt), and **tools** (what the

@@ -1,4 +1,10 @@
-"""Controlled action-channel execution with inert, instrumented tools."""
+"""Controlled action-channel execution with inert, instrumented tools.
+
+Diagram box: INERT STAND-IN TOOLS and their recorder. NOT the TOOLS box on the
+diagram -- that box is YOUR real functions. These seven fakes are used only by the
+no-external-system target kind (`target.py`), where asrt-bench supplies everything.
+Full box -> file map: docs/modules_keywords.md
+"""
 
 from __future__ import annotations
 

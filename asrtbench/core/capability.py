@@ -10,6 +10,9 @@ Slack webhook.
 
 Blast radius ranks successes; it never turns a failure into a success. Severity
 and truth stay separate numbers.
+
+Diagram box: VERIFIER — blast radius; also the tool severity weights.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

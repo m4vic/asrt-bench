@@ -14,6 +14,9 @@ Configuration is by environment (no secret ever lives in a tracked file):
 
     ASRT_ATTACK_API_URL   e.g. http://localhost:8000   or   https://api.neuralchemy.in
     ASRT_ATTACK_API_KEY   your account key (Bearer)
+
+Diagram box: ATTACK PACK — fetching one from the paid API instead of from disk.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

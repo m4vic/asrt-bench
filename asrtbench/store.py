@@ -7,6 +7,9 @@ machine -- nothing leaves it. `/diff` reads two of these back and compares them.
 The store keeps the pack hash with every version, because that is the only thing
 that makes two versions honestly comparable: a diff between runs fired with
 different packs is not a regression, it is a different question.
+
+Diagram box: SAVE — the runs/*.json that `/diff` reads back.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

@@ -1,4 +1,8 @@
-"""Deterministic action-channel verification over an observed Harness Trace."""
+"""Deterministic action-channel verification over an observed Harness Trace.
+
+Diagram box: VERIFIER — turns a Trace plus criteria into a verdict.
+Full box -> file map: docs/modules_keywords.md
+"""
 
 from __future__ import annotations
 

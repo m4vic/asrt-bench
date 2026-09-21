@@ -1,4 +1,8 @@
-"""Declarative, serializable success criteria for action-channel attacks."""
+"""Declarative, serializable success criteria for action-channel attacks.
+
+Diagram box: VERIFIER — the question it asks (the predicate language).
+Full box -> file map: docs/modules_keywords.md
+"""
 
 from __future__ import annotations
 

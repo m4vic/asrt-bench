@@ -8,6 +8,9 @@ reconstructs the run with no network.
 The one rule that keeps replay honest: a cassette miss in replay mode is a hard
 error. Replay must never silently fall through to a live call -- that would make
 a "reproduced" run secretly non-reproducible.
+
+Diagram box: TARGET ADAPTER — record/replay of model calls.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

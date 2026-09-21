@@ -18,19 +18,24 @@ deployed application. So a verdict here answers "would this model, wired to a
 tool shaped like send_email, misuse it under a poisoned document" -- not "is
 your production system exploitable end to end." Attaching to a real running
 agent with its own tools is a separate, larger problem, deliberately not here.
+
+Diagram box: TARGET ADAPTER — the no-external-system kind, plus `load_target()`.
+Not the TARGET box itself: that box is YOUR agent, and no file here implements it.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from asrtbench.core import TargetProfile
+from asrtbench.core import TargetProfile, Trace
 from asrtbench.harness import (
-    DirectiveFollowingAgent, ModelAgent, ollama_chat_fn, openai_chat_fn,
-    TOOL_SCHEMAS, ToolCallingUnsupported,
+    ActionHarness, DirectiveFollowingAgent, ModelAgent, ollama_chat_fn,
+    openai_chat_fn, TOOL_SCHEMAS, ToolCallingUnsupported,
 )
 
 # Bundled example configs; `/target <name>` resolves a bare name here.
@@ -58,6 +63,10 @@ class Target:
     api_key_env: str = "OPENAI_API_KEY"
     attacker_knowledge: str = "schema"
     tools: tuple[str, ...] | None = None   # None -> the full harness surface
+    # How many tool calls one attack may make before the harness cuts the run
+    # short. The cut is recorded, and a cut run can only ever verify as
+    # `unclear` -- never as `defended`.
+    max_tool_calls: int = 6
 
     @classmethod
     def fixture(cls) -> "Target":
@@ -169,6 +178,25 @@ class Target:
             chat = ollama_chat_fn(self.model, api_base=base)
         return lambda _fixtures: ModelAgent(chat)
 
+    def run_case(self, task: str, fixtures: dict[str, str]) -> Trace:
+        """Run one attack against this target and return the recorded Trace.
+
+        The shared entry point every target type implements (see also
+        `pytarget.PythonTarget` and `attach.AttachedTarget`), so `runner.run_pack`
+        drives all of them with one loop.
+
+        Synchronous on purpose: the event loop is an implementation detail of the
+        targets that need one, not something a reader of the runner should have
+        to think about. A fresh agent is built per call so no state -- and for a
+        model, no conversation history -- leaks from one attack into the next.
+        """
+        harness = ActionHarness(target_name=self.name)
+        agent = self.agent_factory()(fixtures)
+        result = asyncio.run(
+            harness.run(agent, task=task, fixtures=fixtures, max_tool_calls=self.max_tool_calls)
+        )
+        return result.trace
+
     def tool_surface(self) -> tuple[str, ...]:
         return self.tools or HARNESS_TOOLS
 
@@ -195,3 +223,20 @@ class Target:
             "blast_ceiling": p.blast_ceiling(),
             "attacker_knowledge": self.attacker_knowledge,
         }
+
+
+def load_target(ref: str) -> Any:
+    """Resolve a target reference to something `runner.run_pack` can drive.
+
+    A path ending in `.py` is your own agent: the file names its tool functions
+    and how to run one request, and asrt-bench records those functions while your
+    flow runs. Anything else is a JSON config describing a model or the fixture.
+
+    The `pytarget` import is deferred to the call so that merely importing
+    `target` never pulls in the machinery for a kind of target you are not using.
+    """
+    if str(ref).endswith(".py"):
+        from asrtbench.pytarget import load_python_target
+
+        return load_python_target(ref)
+    return Target.resolve(ref)

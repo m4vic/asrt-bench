@@ -7,6 +7,9 @@ Harness, the `ActionAgent` contract would be wrong -- so it does not.
 The model is reached through a pluggable ``chat_fn(messages, tools)`` rather than
 a hardcoded provider. That keeps the agent loop provider-neutral and makes
 record/replay (T7) a drop-in: replay is just a chat_fn that reads a cassette.
+
+Diagram box: TARGET ADAPTER — drives a model's tool-calling loop.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

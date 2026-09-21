@@ -12,6 +12,10 @@ the real implementation. This is the shape of attaching asrt-bench to a real app
 
 Two variants: `base` (a typical helpful support prompt) and `hardened` (adds an
 instruction-hierarchy defense). Point the demo at both and diff them.
+
+Diagram box: not on the diagram — a self-contained worked example with its own
+app, recorder and pack.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

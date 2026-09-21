@@ -6,6 +6,9 @@ response dictionary. ASRT can select targets from the CLI, for example:
     python loop.py --target ollama --model qwen2.5:7b
 
 The executor does not judge safety. It only captures what the target said.
+
+Diagram box: TARGET ADAPTER — model transport (HTTP to a provider).
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

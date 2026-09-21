@@ -9,6 +9,9 @@ Two things, made simple and legible:
 A colored console so a first run is obvious, not a manual. Everything here is a
 thin wrapper over the library (target.py, runner.py, store.py, diff.py) -- the
 CLI decides nothing about a verdict.
+
+Diagram box: the outer shell — renders, decides nothing about a verdict.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations
@@ -34,7 +37,8 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from asrtbench.target import Target
+from asrtbench.target import Target, load_target
+from asrtbench.pytarget import PythonTargetError
 from asrtbench import runner, store, attack_api
 from asrtbench.diff import compare, IncomparableRuns
 
@@ -79,8 +83,8 @@ def cmd_target(session: Session, args: dict) -> None:
         return
     if ref:
         try:
-            session.target = Target.resolve(ref)
-        except (FileNotFoundError, ValueError) as exc:
+            session.target = load_target(ref)
+        except (FileNotFoundError, ValueError, PythonTargetError) as exc:
             console.print(f"  [red]✗ {exc}[/red]")
             return
     _render_target(session.target)
@@ -95,6 +99,8 @@ def _render_target(target: Target) -> None:
     if d["kind"] == "model":
         t.add_row("model", f"{d['model']}")
         t.add_row("via", f"[dim]{d['provider']} · {d['endpoint']}[/dim]")
+    elif d["kind"] == "python":
+        t.add_row("kind", "python  [dim]· your agent, your real tools[/dim]")
     else:
         t.add_row("kind", "fixture  [dim]· deterministic, no model[/dim]")
     t.add_row("tools", "[dim]" + ", ".join(d["tools"]) + "[/dim]")
@@ -147,7 +153,9 @@ def cmd_run(session: Session, args: dict) -> None:
         console.print(f"  [red]✗ unknown source '{source}' (use prebuilt | api)[/red]")
         return
 
-    if session.target.kind == "model":
+    # Only a model target has credentials or tool-calling to pre-flight. Other
+    # target kinds do not define these, so ask before reaching for them.
+    if getattr(session.target, "kind", None) == "model":
         missing = session.target.missing_credential()
         if missing:
             console.print(f"[red]{session.target.name} needs {missing}. Set it, then retry.[/red]")
@@ -165,8 +173,13 @@ def cmd_run(session: Session, args: dict) -> None:
                       f"[dim]· was {old['run_id']}, target {old['target']}[/dim]")
 
     console.print()
+    # A `.py` or attached target runs YOUR real tools, so promising "no real side
+    # effects" there would be false -- and someone would believe it.
+    inert = getattr(session.target, "kind", None) in ("fixture", "model")
+    note = ("tools inert — no real side effects" if inert
+            else "YOUR real tools — side effects are real")
     console.print(Rule(f"[magenta]▶ firing pack at[/magenta] [bold {BRAND}]{session.target.name}[/bold {BRAND}]"
-                       f"   [dim]tools inert — no real side effects[/dim]",
+                       f"   [dim]{note}[/dim]",
                        style="magenta", align="left"))
 
     def emit(stage: str, p: dict) -> None:
@@ -203,6 +216,31 @@ def cmd_run(session: Session, args: dict) -> None:
     console.print(Panel(summary, title="✓ run complete", title_align="left",
                         border_style="green" if not c["success"] else "red",
                         box=box.ROUNDED, padding=(1, 2), expand=False))
+
+    # Zero recorded tool calls across an entire pack is almost never a safe
+    # agent -- it means nothing was observed. The usual cause is a `.py` target
+    # naming a tool where it is DEFINED rather than where it is CALLED, which
+    # leaves an empty trace that the Verifier can only score as `defended`.
+    # Silence here would hand back a page of false clean passes.
+    if result.outcomes and sum(o.tool_calls for o in result.outcomes) == 0:
+        console.print(Panel(
+            Group(
+                Text.from_markup("[bold red]No tool call was recorded in any case.[/bold red]"),
+                Text(""),
+                Text.from_markup(
+                    "Every verdict above is therefore [green]defended[/green] by default, "
+                    "whatever your agent actually did."),
+                Text(""),
+                Text.from_markup(
+                    "[dim]If this is a .py target: patch where the tool is CALLED, "
+                    "not where it is defined.[/dim]"),
+                Text.from_markup(
+                    "[dim]`from tools import lookup_order` binds a separate name in "
+                    "the importing module, so TOOLS must name that module, "
+                    "not `tools`.[/dim]"),
+            ),
+            title="⚠ nothing was observed", title_align="left",
+            border_style="red", box=box.ROUNDED, padding=(1, 2), expand=False))
 
 
 def _stack_bar(landed: int, defended: int, unclear: int, total: int, width: int = 30) -> Text:
@@ -340,7 +378,8 @@ def cmd_api(session: Session, args: dict) -> None:
 HELP = f"""
 [bold {BRAND}]asrt-bench[/bold {BRAND}] [dim]— fire a pack, verify what lands, diff versions[/dim]
 
-  [bold]/target[/bold] [dim]<name>│list[/dim]     choose the system under test
+  [bold]/target[/bold] [dim]<name>│list│x.py[/dim] choose the system under test
+                         [dim]a .py file tests YOUR agent with its real tools[/dim]
   [bold]/run[/bold] [dim]name=v1 [source=api][/dim]  fire the pack at it, save as version v1
   [bold]/diff[/bold] [dim]<v1> <v2>[/dim]         what changed between two versions
   [bold]/versions[/bold]              list saved runs

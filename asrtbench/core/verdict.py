@@ -1,4 +1,8 @@
-"""Common, evidence-citing adjudication output."""
+"""Common, evidence-citing adjudication output.
+
+Diagram box: VERIFIER — the answer it returns.
+Full box -> file map: docs/modules_keywords.md
+"""
 
 from __future__ import annotations
 

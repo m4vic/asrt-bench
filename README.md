@@ -2,12 +2,12 @@
 
 **Fire a frozen attack pack at your AI agent, verify what lands, and diff safety across versions.**
 
-[![License: MIT](https://img.shields.io/github/license/m4vic/asrt-bench?color=22d3ee)](LICENSE)
+[![License: MIT](https://img.shields.io/github/license/m4vic/asrt-bench?color=22d3ee)](https://github.com/m4vic/asrt-bench/blob/master/LICENSE)
 [![Stars](https://img.shields.io/github/stars/m4vic/asrt-bench?style=flat&color=22d3ee)](https://github.com/m4vic/asrt-bench/stargazers)
-[![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](requirements.txt)
+[![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](https://github.com/m4vic/asrt-bench/blob/master/requirements.txt)
 
 <p align="center">
-  <img src="docs/demo.gif" alt="asrt-bench demo — a poisoned support ticket drives a real fraudulent refund, and a hardening prompt stops nothing" width="820">
+  <img src="https://raw.githubusercontent.com/m4vic/asrt-bench/master/docs/demo.gif" alt="asrt-bench demo — a poisoned support ticket drives a real fraudulent refund, and a hardening prompt stops nothing" width="820">
 </p>
 
 ⚠️ **This project is constantly evolving and is currently not production-grade.**
@@ -183,4 +183,4 @@ separate, private engine.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/m4vic/asrt-bench/blob/master/LICENSE).

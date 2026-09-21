@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asrt-bench"
+version = "0.2.0"
+description = "Fire a frozen attack pack at your AI agent, verify what lands from its tool-call trace, and diff versions to catch safety regressions."
+readme = "README.md"
+# SPDX string form; the table form is deprecated and stops working 2027-02.
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+keywords = ["llm", "ai-security", "prompt-injection", "agent", "regression-testing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
+
+# Kept in step with requirements.txt. That file stays for the clone-and-run
+# path documented in the README; this list is what `pip install asrt-bench`
+# resolves.
+dependencies = [
+    "rich>=13",
+    "prompt_toolkit>=3",
+    "aiohttp>=3.9",
+    "tenacity>=8",
+    "python-dotenv>=1",
+]
+
+[project.urls]
+Homepage = "https://github.com/m4vic/asrt-bench"
+Source = "https://github.com/m4vic/asrt-bench"
+
+[project.scripts]
+# Installing puts `asrt-bench` on PATH. `python -m asrtbench` keeps working for
+# anyone running from a clone without installing.
+asrt-bench = "asrtbench.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["asrtbench*"]
+
+[tool.setuptools.package-data]
+# The bundled attack packs and target configs are data the tool reads at runtime,
+# so they must travel with an installed copy, not just a git clone.
+asrtbench = ["packs/**/*.json", "targets/*.json", "demo/*.json"]

@@ -30,20 +30,25 @@ observed (each agent's tools wrapped separately) and pass all of them to
 `attach_many()` -- every call still lands in ONE trace, tagged by which agent
 made it, so a cross-agent failure ("agent A's output became agent B's argument")
 is visible in a single run.
+
+Diagram box: TARGET ADAPTER + RECORDER, for your model-driven app.
+Not the TARGET or TOOLS boxes: those are your code, and no file here implements them.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from asrtbench.core import Trace
-from asrtbench.harness import drive_tool_loop
-
-
-class ToolBudgetExceeded(RuntimeError):
-    pass
+# One budget exception for the whole project. A second, look-alike class defined
+# here would not be caught by `except ToolBudgetExceeded` in the harness, so an
+# over-budget run would escape as an unhandled error instead of being recorded
+# as a truncated one.
+from asrtbench.harness import drive_tool_loop, ToolBudgetExceeded
 
 
 class _Recorder:
@@ -115,6 +120,17 @@ class AttachedTarget:
             trace.append("run_finished", source="harness", data={"error": str(exc)})
         return trace
 
+    def run_case(self, task: str, fixtures: dict[str, str]) -> Trace:
+        """Run one attack and return the Trace -- the shared target entry point.
+
+        Only the first fixture value is used: `inject` takes one poisoned payload,
+        because your system has one real input path. Multiple fixture files are a
+        harness concept (files an inert `read_file` can serve) with no equivalent
+        in your app.
+        """
+        payload = next(iter(fixtures.values()), "")
+        return asyncio.run(self.run(task, payload))
+
 
 def attach(
     *,
@@ -171,6 +187,14 @@ class MultiAgentTarget:
             try:
                 await drive_tool_loop(member.chat_fn, messages, tools, tool_schemas=member.tool_schemas)
             except ToolBudgetExceeded:
+                # One member exhausting its budget must not abandon the others:
+                # the interesting failure is often the *second* agent acting on
+                # what the first one passed along.
                 pass
         trace.append("run_finished", source="harness", data={"error": None})
         return trace
+
+    def run_case(self, task: str, fixtures: dict[str, str]) -> Trace:
+        """Run one attack across every member. See `AttachedTarget.run_case`."""
+        payload = next(iter(fixtures.values()), "")
+        return asyncio.run(self.run(task, payload))

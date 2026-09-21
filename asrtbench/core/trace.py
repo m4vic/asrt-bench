@@ -1,4 +1,8 @@
-"""Immutable-facing, append-only evidence contracts for the action channel."""
+"""Immutable-facing, append-only evidence contracts for the action channel.
+
+Diagram box: TRACE — the evidence log every verdict is read from.
+Full box -> file map: docs/modules_keywords.md
+"""
 
 from __future__ import annotations
 

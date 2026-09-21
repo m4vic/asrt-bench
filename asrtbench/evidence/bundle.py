@@ -10,6 +10,9 @@ nothing else.
 adjudicator for the action channel is the deterministic Verifier, so there is no
 judge kappa to report -- the bundle says so explicitly rather than leaving a
 blank that could be mistaken for an unvalidated judge.
+
+Diagram box: not on the diagram — portable run artifact.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

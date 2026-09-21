@@ -1,6 +1,9 @@
 """Database connection and table initialization for ASRT data collection.
 
 Supports PostgreSQL via DATABASE_URL and falls back automatically to SQLite.
+
+Diagram box: not on the diagram — storage backend for `evidence/`.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations

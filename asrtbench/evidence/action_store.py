@@ -7,6 +7,10 @@ averaging them into a single meaningless number.
 
 This layer persists verbatim and rehydrates verbatim. It never re-decides a
 verdict or edits a trace -- evidence may not alter what it is handed.
+
+Diagram box: not on the diagram — a second persistence layer (full traces in SQLite).
+`store.py` is the one `/diff` uses; this is separate.
+Full box -> file map: docs/modules_keywords.md
 """
 
 from __future__ import annotations
