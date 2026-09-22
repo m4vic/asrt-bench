@@ -27,8 +27,6 @@ classifiers = [
 dependencies = [
     "rich>=13",
     "prompt_toolkit>=3",
-    "aiohttp>=3.9",
-    "tenacity>=8",
     "python-dotenv>=1",
 ]
 

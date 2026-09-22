@@ -4,7 +4,6 @@ from .capability import (
     blast_radius, capability_of, weight_of, weight_of_capability,
 )
 from .criteria import CRITERIA_VERSION, CriteriaValidationError, SuccessCriteria
-from .run_config import RunConfig, IDENTITY_FIELDS
 from .suite import Suite
 from .target_profile import AttackerKnowledge, TargetProfile
 from .trace import Trace, TraceEvent
@@ -16,8 +15,6 @@ __all__ = [
     "CAPABILITY_WEIGHT",
     "CRITERIA_VERSION",
     "CriteriaValidationError",
-    "IDENTITY_FIELDS",
-    "RunConfig",
     "SuccessCriteria",
     "Suite",
     "TOOL_CAPABILITY_WEIGHT",
