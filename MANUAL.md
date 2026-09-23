@@ -180,16 +180,7 @@ Use it in CI the same way: run the pack on every change, fail the build if
 
 ---
 
-## 5. Free vs. paid attacks
-
-- **Free (now):** the prebuilt packs above — run them offline, forever.
-- **Paid (coming):** a live API that generates *fresh, larger* packs tailored to
-  your target. `/api` shows how to connect it; until then the prebuilt packs work
-  fully offline. See the README's "Attack sources" section.
-
----
-
-## 6. Honest scope
+## 5. Honest scope
 
 - It tests **a model wired to instrumented tools**, or your app via the recorder —
   a verdict means "this agent, given these tools, misused one under a poisoned

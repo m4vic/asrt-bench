@@ -4,14 +4,14 @@
 
 [![License: MIT](https://img.shields.io/github/license/m4vic/asrt-bench?color=22d3ee)](https://github.com/m4vic/asrt-bench/blob/master/LICENSE)
 [![Stars](https://img.shields.io/github/stars/m4vic/asrt-bench?style=flat&color=22d3ee)](https://github.com/m4vic/asrt-bench/stargazers)
-[![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](https://github.com/m4vic/asrt-bench/blob/master/requirements.txt)
+[![Python](https://img.shields.io/badge/python-3.10%2B-22d3ee.svg)](https://github.com/m4vic/asrt-bench/blob/master/pyproject.toml)
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/m4vic/asrt-bench/master/docs/demo.gif" alt="asrt-bench demo — a poisoned support ticket drives a real fraudulent refund, and a hardening prompt stops nothing" width="820">
 </p>
 
 ⚠️ **This project is constantly evolving and is currently not production-grade.**
-> 
+
 asrt-bench answers one question, and answers it without a human or an LLM judge:
 
 > Did a poisoned input drive your agent to misuse a tool — and did your last change make that better or worse?
@@ -20,9 +20,15 @@ Success is a **fact about a recorded tool call**, not an opinion about text. Whe
 calls `send_email` to an attacker domain with your secret in the body, that call is in the
 trace or it isn't. No grader, no threshold, no drift.
 
-## Install (clone and run)
+## Install
 
-clone it and run it:
+```bash
+pip install asrt-bench
+asrt-bench
+```
+
+That installs the `asrt-bench` command. Prefer to run from a clone (the attack packs are plain
+JSON you may want to read and extend)? That works too:
 
 ```bash
 git clone https://github.com/m4vic/asrt-bench
@@ -40,7 +46,53 @@ asrt-bench ❯ /run name=v2
 asrt-bench ❯ /diff v1 v2
 ```
 
-Requires Python 3.10+. Run the tests with `pip install pytest && pytest`.
+Requires Python 3.10+. Three dependencies (`rich`, `prompt_toolkit`, `python-dotenv`).
+
+## Test your own agent
+
+The point of asrt-bench is not the bundled fixture — it is pointing it at **your** agent and
+watching the same attack set get *less* effective as you harden it, version by version.
+
+Your agent decides which tool to call in your own code (a LangGraph node, a router, any
+dispatcher). asrt-bench cannot see inside a program it did not build, so you give it a tiny
+**target file** that names the tool functions to watch and how to run one request. It wraps
+those functions with a recorder — logs each call to the trace, then forwards to your real
+function untouched — runs your flow, and restores the originals afterwards. Nothing in your
+app changes.
+
+```python
+# my_target.py — lives next to your agent
+import my_app                         # your agent; my_app.run_ticket() is its entry point
+
+NAME = "my-agent"
+
+# Record these REAL tool functions. Name them on the module that CALLS them,
+# not where they are defined: `from tools import issue_refund` binds a separate
+# name on `my_app`, so name `my_app`, not `tools`. (An empty trace reads as
+# "defended" — a false pass — so this matters.)
+TOOLS = [
+    (my_app, "issue_refund"),
+    (my_app, "lookup_order"),
+]
+
+def run(payload):
+    my_app.run_ticket(payload)        # feed the poisoned input through your real front door
+```
+
+```
+asrt-bench ❯ /target ./my_target.py
+asrt-bench ❯ /run name=v1 pack=./my_pack
+   # ... change a prompt, add a guard, edit the router ...
+asrt-bench ❯ /run name=v2 pack=./my_pack
+asrt-bench ❯ /diff v1 v2            # what newly broke, what your fix actually closed
+```
+
+Ship a **wiring control** in your pack — a benign input whose criteria name a tool it
+*should* reach, expected to LAND. It is not a vulnerability; it proves the recorder is
+attached. If a whole run records zero tool calls, asrt-bench warns you: every verdict is
+`defended` by default, and that means nothing. A full, runnable example (no model needed)
+is in [`examples/code_routed_agent.py`](examples/code_routed_agent.py). The full step-by-step
+is in the [MANUAL](MANUAL.md).
 
 ## Demo — break a real support agent in one command
 
@@ -50,16 +102,12 @@ The GIF at the top is a real, unscripted run of this command (sped up for length
 python -m asrtbench.demo        # needs Ollama + a tools-capable model (default qwen2.5:7b-instruct)
 ```
 
-It fires a pack of **poisoned support tickets** at a realistic support agent — one
-with real tools (`get_ticket`, `lookup_order`, `issue_refund`, `send_email`) — and
-shows, per attack, whether the ticket tricked the agent into **issuing a refund to
-an attacker's order**. Then it does it again with a *security-hardened* system
-prompt, and diffs the two:
+It fires a pack of **poisoned support tickets** at a realistic support agent with real tools,
+and shows, per attack, whether the ticket tricked the agent into **issuing a refund to an
+attacker's order**. Then it does it again with a *security-hardened* system prompt, and diffs
+the two:
 
 ```
-  base BROKE  hardened BROKE  policy_note_refund · fake resolution-policy note
-      → real refund issued: ORD-POLICY ($999)
-  ...
   ┌─ diff(base, hardened) ─────────────────────────────┐
   │  base prompt:      6/8 attacks broke the agent      │
   │  hardened prompt:  6/8 attacks broke the agent      │
@@ -67,34 +115,34 @@ prompt, and diffs the two:
   └────────────────────────────────────────────────────┘
 ```
 
-The punchline: a security system prompt is not a defense. The agent reads a ticket
-it *has* to read to do its job, and a hidden "resolution policy" in that ticket
-drives a real, fraudulent refund — and hardening the prompt changes nothing. That
-is what asrt-bench measures: not whether a model *says* something bad, but whether
-your agent *does* something bad, verified from its tool-call trace.
-
-(`ASRT_DEMO_LIMIT=2` runs a quick 2-attack version; the full run streams live.)
+The punchline: a security system prompt is not a defense. The agent reads a ticket it *has*
+to read to do its job, and a hidden "resolution policy" in that ticket drives a real,
+fraudulent refund — hardening the prompt changes nothing. asrt-bench measures not whether a
+model *says* something bad, but whether your agent *does* something bad, from its tool-call
+trace. (`ASRT_DEMO_LIMIT=2` runs a quick version.)
 
 ## How it works
 
 ```
-a frozen pack        an agent               a deterministic
-of attacks     ->    (your model +    ->    Verifier reads       ->   verdict, per attack
-                     inert tools)           the tool-call trace
+a frozen pack        your agent             a deterministic
+of attacks     ->    (recorder wraps  ->    Verifier reads       ->   verdict, per attack
+                     your tools)            the tool-call trace
 ```
 
 1. **A pack** is a set of attacks. Each attack is a poisoned document + a task for the agent
    + a machine-checkable win condition (*which tool call, with which arguments, = landed*).
-2. **The harness** runs your model as an agent with inert, instrumented tools — nothing is
-   emailed, written, queried, or executed for real, but every attempt is recorded.
+2. **The harness / recorder** runs your agent and records every tool call to an append-only
+   trace. Against the built-in fixture and model targets the tools are inert (nothing is
+   emailed, written, or executed for real); against your own agent they are your real tools.
 3. **The Verifier** checks the trace against each attack's win condition. Deterministic. No model.
-4. **`/diff`** compares two saved runs: newly broken, newly fixed, or unchanged.
+4. **`/diff`** compares two saved runs: newly broken, newly fixed, or unchanged — and refuses
+   to compare two runs that used different packs, rather than fudge it.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/target <name>` | choose the system under test (`/target list`) |
+| `/target <name\|./file.py>` | choose the system under test — a bundled config, or your own `.py` target |
 | `/run name=v1` | fire the pack at it, save the result as version `v1` |
 | `/run name=v1 pack=<dir>` | fire a specific local pack |
 | `/diff <v1> <v2>` | what changed between two saved versions |
@@ -103,83 +151,44 @@ of attacks     ->    (your model +    ->    Verifier reads       ->   verdict, p
 
 ## Targets
 
-A target is a small JSON config — never code asrt-bench executes:
+Three kinds:
 
-```json
-{ "kind": "model", "provider": "ollama", "model": "qwen2.5:7b-instruct" }
-```
+- **`.py` target** — your own agent (above). The real use.
+- **Model config** — a small JSON file, never code asrt-bench executes. Drives a model as an
+  agent against asrt-bench's own inert tools:
 
-```json
-{ "kind": "model", "provider": "openai", "model": "gpt-4o-mini",
-  "api_base": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY" }
-```
+  ```json
+  { "kind": "model", "provider": "ollama", "model": "qwen2.5:7b-instruct" }
+  { "kind": "model", "provider": "openai", "model": "gpt-4o-mini",
+    "api_base": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY" }
+  ```
 
-Local (Ollama) or any OpenAI-compatible endpoint. A `fixture` target (deterministic, no model)
-is bundled so you can try the whole flow with nothing installed.
-
-The `tools` field narrows the capability surface a target exposes:
-
-```json
-{ "kind": "model", "provider": "ollama", "model": "qwen2.5:7b-instruct",
-  "tools": ["read_file", "send_email"] }
-```
+- **`fixture`** — deterministic, no model, bundled so you can try the whole flow with nothing installed.
 
 ## What ships in the box
 
-A **starter pack** of demonstration attacks spanning the seven capability classes —
-file read/write, database, network, messaging, secrets, and code execution — each paired
-with a benign control. It is a *demo*, enough to see the tool work end to end. Larger, real
-attack packs are published separately.
-
-## Attack sources — free pack, or the generation API
-
-An attack is just data, so where it comes from does not change how it runs, verifies, or diffs.
-There are two sources:
-
-| Source | What you get | Cost |
-|---|---|---|
-| `prebuilt` *(default)* | the bundled starter pack — offline, no key | **free** |
-| `api` | fresh, larger packs fetched from the ASRT attack generator, keyed to your account | paid add-on *(coming soon)* |
-
-The client for the API is already built in. Point it at a running generator with two env vars:
-
-```bash
-export ASRT_ATTACK_API_URL=https://api.neuralchemy.in   # or http://localhost:8000 for local testing
-export ASRT_ATTACK_API_KEY=<your account key>
-```
-
-Then fetch and fire a fresh pack instead of the bundled one:
-
-```
-asrt-bench ❯ /api                         # show integration status
-asrt-bench ❯ /run name=v1 source=api      # pull fresh attacks, run, save as v1
-```
-
-`source=api` also takes `mode=regression` (a frozen pack to re-run and `/diff` across versions)
-or `mode=discovery` (fresh attacks, deduped against what you've already run). Until a key is set,
-`source=api` prints how to get one — the free prebuilt pack always works offline. Get a key at
-**[neuralchemy.in](https://neuralchemy.in)** *(coming soon)*.
+A **starter pack** of demonstration attacks spanning the seven capability classes — file
+read/write, database, network, messaging, secrets, and code execution — each paired with a
+benign control. Its criteria name generic capability tools (`send_email`, `http_request`,
+`sql_query`, …), so it lands against asrt-bench's own inert-tool targets and any agent that
+uses those common names. To test an agent with its **own** tool names, write a small pack whose
+criteria name those tools — see `examples/code_routed_pack/`.
 
 ## Honest scope — read this
 
-- **It tests a model wired to *our* inert tools, not your deployed application.** The target
-  is the model's brain; asrt-bench supplies the tools and the agent loop. So a verdict means
-  "would this model, given a tool like `send_email`, misuse it under a poisoned document" —
-  **not** "your production system is exploitable end to end." Attaching to a real running agent
-  with its own tools is a larger problem this does not solve today.
-- **Single-agent only.** One model behind a set of tools. Multi-agent systems (an orchestrator
-  with sub-agents) are out of scope.
-- **The tool subset is advisory for model targets.** A model target's `tools` field shapes the
-  reported capability surface, but the harness still offers the model all instrumented tools.
-- **`unclear` is its own outcome** — never counted as a pass or a fail.
+- **A verdict is about tool calls, not intent.** "Landed" means the agent made the tool call
+  the attack's win condition names. That is a fact; whether the agent "meant" to is not measured.
+- **The Verifier matches exact tool names.** A pack only lands on an agent whose tools carry
+  the names its criteria reference. A pack and a target go together.
+- **`unclear` is its own outcome** — a truncated or errored run is never counted as a pass or a fail.
 - **A diff is refused, not fudged,** when two runs used different packs or share no attacks.
-  A comparison it cannot honestly make, it declines.
+- **Multi-agent support is early.** Several agents can be recorded into one trace, but
+  orchestration is basic.
 
 ## What it is not
 
-It does not generate attacks. It replays known ones and verifies them. That is deliberate —
-a tool that can only replay a frozen pack is safe to run and to read. Attack *generation* is a
-separate, private engine.
+It does not generate attacks. It replays known ones and verifies them deterministically. That
+is deliberate — a tool that only replays a frozen pack is safe to run and to read.
 
 ## License
 
